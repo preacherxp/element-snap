@@ -74,17 +74,18 @@
 
     .preview {
       position: fixed; right: 12px; min-width: 200px; max-width: 320px;
-      background: #fff; border: 3px solid #000; box-shadow: 6px 6px 0 #000;
+      background: #000; border: 3px solid #000; box-shadow: 6px 6px 0 #000;
       font: 700 11px/1.2 ${MONO}; text-transform: uppercase; letter-spacing: .4px;
     }
     .preview.left { right: auto; left: 12px; }
     .ph { display: flex; justify-content: space-between; gap: 16px; background: #000; color: #00a98f; padding: 5px 8px; }
     .ph span { color: #fff; }
-    .preview canvas {
-      display: block; margin: 10px auto;
-      background: repeating-conic-gradient(#e4e4e4 0 25%, #fff 0 50%) 0 0 / 12px 12px;
-      outline: 1px solid #000;
+    /* The image sits edge to edge; any leftover space (narrow elements) gets a dark checkerboard. */
+    .pbody {
+      display: grid; place-items: center;
+      background: repeating-conic-gradient(#161616 0 25%, #232323 0 50%) 0 0 / 12px 12px;
     }
+    .preview canvas { display: block; }
     .pnote { background: #00a98f; color: #000; padding: 5px 8px; border-top: 3px solid #000; }
   `;
 
@@ -125,7 +126,7 @@
     <div class="toast" hidden></div>
     <div class="preview" hidden>
       <div class="ph">PREVIEW <span class="pdim"></span></div>
-      <canvas></canvas>
+      <div class="pbody"><canvas></canvas></div>
       <div class="pnote" hidden></div>
     </div>`;
   const $ = (s) => root.querySelector(s);

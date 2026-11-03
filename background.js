@@ -42,19 +42,27 @@ async function toOffscreen(msg) {
   return res;
 }
 
+async function shootTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab.active) throw new Error('TAB LOST FOCUS. KEEP IT VISIBLE WHILE SNAPPING');
+  return shoot(tab.windowId).catch((err) => {
+    throw new Error(
+      /activeTab|all_urls|permission/i.test(err.message)
+        ? 'NO ACCESS. CLICK THE ELEMENT SNAP ICON ON THIS TAB FIRST'
+        : err.message,
+    );
+  });
+}
+
 const handlers = {
   async tile(msg, sender) {
-    const tab = await chrome.tabs.get(sender.tab.id);
-    if (!tab.active) throw new Error('TAB LOST FOCUS. KEEP IT VISIBLE WHILE SNAPPING');
-    const shot = await shoot(tab.windowId).catch((err) => {
-      throw new Error(
-        /activeTab|all_urls|permission/i.test(err.message)
-          ? 'NO ACCESS. OPEN ELEMENT SNAP ON THIS TAB FIRST'
-          : err.message,
-      );
-    });
-    await toOffscreen({ ...msg, shot });
+    await toOffscreen({ ...msg, shot: await shootTab(sender.tab.id) });
     return {};
+  },
+
+  // A clean viewport screenshot the picker crops hover previews from.
+  async frame(_msg, sender) {
+    return { shot: await shootTab(sender.tab.id) };
   },
 
   async finish(msg) {

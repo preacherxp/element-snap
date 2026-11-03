@@ -71,6 +71,21 @@
     }
     .bar.top ~ .toast { top: auto; bottom: 12px; }
     .toast.err { background: #ff3b00; color: #000; box-shadow: 6px 6px 0 #000; }
+
+    .preview {
+      position: fixed; right: 12px; min-width: 200px; max-width: 320px;
+      background: #fff; border: 3px solid #000; box-shadow: 6px 6px 0 #000;
+      font: 700 11px/1.2 ${MONO}; text-transform: uppercase; letter-spacing: .4px;
+    }
+    .preview.left { right: auto; left: 12px; }
+    .ph { display: flex; justify-content: space-between; gap: 16px; background: #000; color: #00a98f; padding: 5px 8px; }
+    .ph span { color: #fff; }
+    .preview canvas {
+      display: block; margin: 10px auto;
+      background: repeating-conic-gradient(#e4e4e4 0 25%, #fff 0 50%) 0 0 / 12px 12px;
+      outline: 1px solid #000;
+    }
+    .pnote { background: #00a98f; color: #000; padding: 5px 8px; border-top: 3px solid #000; }
   `;
 
   // Leftover hosts come from a previous injection whose extension context was reloaded.
@@ -107,7 +122,12 @@
         </div>
       </div>
     </div>
-    <div class="toast" hidden></div>`;
+    <div class="toast" hidden></div>
+    <div class="preview" hidden>
+      <div class="ph">PREVIEW <span class="pdim"></span></div>
+      <canvas></canvas>
+      <div class="pnote" hidden></div>
+    </div>`;
   const $ = (s) => root.querySelector(s);
   const box = $('.box');
   const label = $('.label');
@@ -117,6 +137,10 @@
   const padv = $('.padv');
   const marks = $('.marks');
   const toastEl = $('.toast');
+  const preview = $('.preview');
+  const pcanvas = $('.preview canvas');
+  const pdim = $('.pdim');
+  const pnote = $('.pnote');
 
   function mount() {
     if (!host.isConnected) document.documentElement.append(host);
@@ -157,10 +181,17 @@
     for (const b of seg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === value));
   }
 
+  let settings = { ...DEFAULTS }; // mirror of storage, so the preview can react without a round trip
+
+  function setSetting(key, value) {
+    settings[key] = value;
+    chrome.storage.sync.set({ [key]: value });
+  }
+
   async function loadSettings() {
-    const s = await chrome.storage.sync.get(DEFAULTS);
-    for (const seg of root.querySelectorAll('.seg[data-key]')) press(seg, s[seg.dataset.key]);
-    padv.textContent = s.padding;
+    settings = { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
+    for (const seg of root.querySelectorAll('.seg[data-key]')) press(seg, settings[seg.dataset.key]);
+    padv.textContent = settings.padding;
   }
 
   for (const seg of root.querySelectorAll('.seg[data-key]')) {
@@ -168,7 +199,7 @@
       const b = e.target.closest('button');
       if (!b) return;
       press(seg, b.dataset.v);
-      chrome.storage.sync.set({ [seg.dataset.key]: b.dataset.v });
+      setSetting(seg.dataset.key, b.dataset.v);
     });
   }
 
@@ -176,7 +207,7 @@
     b.addEventListener('click', () => {
       const padding = Math.min(400, Math.max(0, Number(padv.textContent) + Number(b.dataset.step)));
       padv.textContent = padding;
-      chrome.storage.sync.set({ padding });
+      setSetting('padding', padding);
     });
   }
 
@@ -220,7 +251,10 @@
   // Events from inside the bar arrive retargeted to the host; let them through.
   const ours = (e) => e.target === host;
 
+  let pointer = null; // last cursor position, to re-pick after the page scrolls under it
+
   function onMove(e) {
+    pointer = [e.clientX, e.clientY];
     if (busy) return;
     if (ours(e)) {
       current = null;
@@ -289,10 +323,125 @@
     snap(list);
   }
 
+  // ---------- live preview ----------
+  // One clean screenshot of the viewport (overlay hidden) is kept, and the hovered element is
+  // cropped out of it, so hovering costs no captures. It's retaken once scrolling or resizing stops.
+
+  const SHOT_GAP = 650; // matches the background's throttle for captureVisibleTab
+  const PREVIEW_W = 280;
+  const PREVIEW_H = 200;
+  let frame = null; // { bmp, k: device pixels per CSS pixel, id }
+  let frameJob = null;
+  let frameTimer = 0;
+  let frameCount = 0;
+  let viewVersion = 0;
+  let lastShotAt = 0;
+  let previewKey = '';
+
+  function dropFrame() {
+    frame?.bmp.close();
+    frame = null;
+  }
+
+  function scheduleFrame(delay = 250) {
+    clearTimeout(frameTimer);
+    frameTimer = setTimeout(() => {
+      if (picking && !busy) refreshFrame();
+    }, delay);
+  }
+
+  function onViewportChange() {
+    if (busy) return;
+    viewVersion++;
+    dropFrame();
+    scheduleFrame();
+    if (pointer && !trail.length) {
+      const t = document.elementFromPoint(...pointer);
+      current = t && t !== host ? t : null;
+    }
+  }
+
+  function refreshFrame() {
+    frameJob ??= (async () => {
+      // Wait out the rate limit before hiding the overlay, so it blinks as briefly as possible.
+      const wait = lastShotAt + SHOT_GAP - Date.now();
+      if (wait > 0) await sleep(wait);
+      if (!picking || busy) return;
+      const version = viewVersion;
+      showOverlay(false);
+      try {
+        await frames();
+        const { shot } = await send({ t: 'frame' });
+        const bmp = await createImageBitmap(dataUrlToBlob(shot));
+        dropFrame();
+        if (version === viewVersion) frame = { bmp, k: bmp.width / innerWidth, id: ++frameCount };
+        else bmp.close();
+      } catch {
+        dropFrame(); // no preview is better than a wrong one
+      } finally {
+        showOverlay(true);
+        frameJob = null;
+      }
+    })();
+    return frameJob;
+  }
+
+  const overlaps = (a, b) =>
+    a.left < b.left + b.width && b.left < a.right && a.top < b.top + b.height && b.top < a.bottom;
+
+  function drawPreview() {
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    const r = current?.isConnected && grow(current.getBoundingClientRect(), Number(settings.padding) || 0);
+    const vis = r && clipToViewport(r, vw, vh);
+    if (!frame || !vis || vis.width < 1 || vis.height < 1) {
+      preview.hidden = true;
+      previewKey = '';
+      return;
+    }
+    const onTop = bar.classList.contains('top');
+    const key = [frame.id, r.left, r.top, r.width, r.height, settings.scale, settings.format, onTop].join();
+    if (key === previewKey) return;
+    previewKey = key;
+
+    const s = Math.min(PREVIEW_W / vis.width, PREVIEW_H / vis.height, 3);
+    const w = Math.max(1, Math.round(vis.width * s));
+    const h = Math.max(1, Math.round(vis.height * s));
+    pcanvas.style.width = `${w}px`;
+    pcanvas.style.height = `${h}px`;
+    pcanvas.width = Math.round(w * devicePixelRatio);
+    pcanvas.height = Math.round(h * devicePixelRatio);
+    const ctx = pcanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = s <= 1; // keep tiny elements (icons) crisp when blown up
+    ctx.imageSmoothingQuality = 'high';
+    const { bmp, k } = frame;
+    ctx.drawImage(bmp, vis.left * k, vis.top * k, vis.width * k, vis.height * k, 0, 0, pcanvas.width, pcanvas.height);
+
+    const out = settings.scale === '1x' ? 1 : k;
+    pdim.textContent = `${Math.round(r.width * out)}×${Math.round(r.height * out)} ${settings.format === 'jpeg' ? 'JPG' : 'PNG'}`;
+    const bigger = r.width > vw || r.height > vh;
+    const cut = vis.width < r.width - 0.5 || vis.height < r.height - 0.5;
+    pnote.hidden = !cut;
+    pnote.textContent = bigger ? 'BIGGER THAN SCREEN · STITCHED ON SAVE' : 'PARTLY OFF SCREEN · SCROLLED IN ON SAVE';
+
+    // Sit next to the bar, on whichever side doesn't cover the element.
+    const br = bar.getBoundingClientRect();
+    preview.style.top = onTop ? `${br.bottom + 12}px` : '';
+    preview.style.bottom = onTop ? '' : `${innerHeight - br.top + 12}px`;
+    preview.hidden = false;
+    preview.classList.remove('left');
+    if (overlaps(preview.getBoundingClientRect(), r)) {
+      preview.classList.add('left');
+      if (overlaps(preview.getBoundingClientRect(), r)) preview.classList.remove('left');
+    }
+  }
+
   const LISTENERS = [
     ['mousemove', onMove],
     ['click', onClick],
     ['keydown', onKey],
+    ['scroll', onViewportChange], // capture phase also catches nested scroll boxes
+    ['resize', onViewportChange],
     ...['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'contextmenu'].map((t) => [t, guard]),
   ];
 
@@ -312,6 +461,7 @@
     } else {
       box.hidden = true;
     }
+    drawPreview();
 
     if (queue.some((el) => !el.isConnected)) setQueue(queue.filter((el) => el.isConnected));
     while (marks.children.length > queue.length) marks.lastChild.remove();
@@ -336,6 +486,7 @@
     loadSettings();
     for (const [type, fn] of LISTENERS) addEventListener(type, fn, true);
     draw();
+    scheduleFrame(100);
   }
 
   function stopPicker() {
@@ -346,9 +497,12 @@
     sel.value = '';
     sel.classList.remove('bad');
     cancelAnimationFrame(raf);
+    clearTimeout(frameTimer);
+    dropFrame();
     for (const [type, fn] of LISTENERS) removeEventListener(type, fn, true);
     box.hidden = true;
     bar.hidden = true;
+    preview.hidden = true;
     marks.replaceChildren();
   }
 
@@ -366,6 +520,7 @@
 
   async function send(msg) {
     const res = await chrome.runtime.sendMessage(msg);
+    if (msg.t === 'tile' || msg.t === 'frame') lastShotAt = Date.now();
     if (!res?.ok) throw new Error(res?.error || 'NO RESPONSE FROM EXTENSION');
     return res;
   }
@@ -470,11 +625,16 @@
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   }
 
-  async function copyPng(dataUrl) {
+  // Decoded by hand: fetch() on a data URL can be blocked by the page's CSP.
+  function dataUrlToBlob(dataUrl) {
     const bin = atob(dataUrl.split(',')[1]);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]);
+    return new Blob([bytes], { type: 'image/png' });
+  }
+
+  async function copyPng(dataUrl) {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': dataUrlToBlob(dataUrl) })]);
   }
 
   const hasSize = (el) => {
@@ -489,6 +649,7 @@
 
     busy = true;
     mount();
+    await frameJob; // a preview refresh may have the overlay hidden right now
     const s = { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
     const start = [scrollX, scrollY];
     const stamp = stampNow();

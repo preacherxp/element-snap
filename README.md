@@ -2,9 +2,9 @@
 
 A Chrome extension that saves any element on a web page as a pixel-exact image.
 
-Click the toolbar icon and the picker starts right away. Hover to highlight an element, click to save it. Queue several and save them in one go, or type a CSS selector to grab every match. Elements taller than the screen are scrolled through and stitched into one image.
+Click the toolbar icon and the picker starts right away. Hover to highlight an element and see a live preview of the image you'll get, then click to save it. Queue several and save them in one go, or type a CSS selector to grab every match. Elements taller than the screen are scrolled through and stitched into one image.
 
-<p align="center"><img src="docs/screenshot.png" width="800" alt="Element Snap's picker on a pricing page: the Pro card is highlighted with its tag and size, the Starter and Team cards are queued as 01 and 02, and the teal bar at the bottom holds the selector field and output settings"></p>
+<p align="center"><img src="docs/screenshot.png" width="800" alt="Element Snap's picker on a pricing page: the Pro card is highlighted with its tag and size, a preview card in the corner shows the cropped Pro card and its output size of 696×785 PNG, the Starter and Team cards are queued as 01 and 02, and the teal bar at the bottom holds the selector field and output settings"></p>
 
 <p align="center"><img src="docs/output.png" width="348" alt="The saved image: just the Pro pricing card with 24px of padding, at retina resolution"><br><sub>What lands in your Downloads folder: just the element, at retina resolution.</sub></p>
 
@@ -36,6 +36,8 @@ Click the toolbar icon, or press `⌥⇧S` (`Alt+Shift+S` on Windows and Linux).
 | Enter | Save the queue (or the highlighted element if the queue is empty) |
 | Esc | Close the picker |
 
+While you hover, a **preview** card next to the bar shows the element cropped as it will be saved, with your padding, plus the output size in pixels. It notes when an element is bigger than the screen (it gets stitched) or partly off screen (it gets scrolled into view). The preview steps aside if it would cover the element you're pointing at.
+
 The bar at the bottom of the page holds the rest:
 
 - **Selector field.** Type a CSS selector and every visible match joins the queue. Enter or **SNAP QUEUE** saves them all.
@@ -65,6 +67,7 @@ flowchart LR
 
     Icon --> BG
     BG -- "inject + toggle" --> CS
+    CS -- "frame: clean viewport<br/>for hover previews" --> BG
     CS -- "scroll, then crop rect<br/>for each tile" --> BG
     BG -- "captureVisibleTab<br/>+ crop rect" --> OFF
     CS -- "finish" --> BG
@@ -74,6 +77,7 @@ flowchart LR
 ```
 
 - **`content.js`** is injected when you click the icon. It draws the highlight, labels, queue marks and bar inside a closed shadow root, so page styles can't touch them and they never show up in a capture. For each element it works out which part of the screen to crop and scrolls the page there. Elements bigger than the screen are done one screenful at a time, with fixed and sticky elements outside the target hidden so headers don't repeat. The scroll position is restored afterwards.
+  For the hover preview it keeps one clean screenshot of the visible area, taken with the overlay hidden, and crops each hovered element out of it on a canvas. Chrome allows only 2 screenshots a second, so taking one per hover isn't possible. The screenshot is retaken once scrolling or resizing stops.
 - **`background.js`** takes the screenshots with `chrome.tabs.captureVisibleTab`, queued to Chrome's limit of 2 per second, and hands the finished image to `chrome.downloads`.
 - **`offscreen.js`** runs in an offscreen document. It crops each screenshot and draws it onto one canvas per element, rounding the tile edges so there are no seams. It lives there because a service worker can't create blob URLs, and data URLs over about 2 MB fail in `chrome.downloads`.
 
@@ -95,6 +99,7 @@ The extension has no host permissions and never runs on a page you haven't click
 - Content inside iframes from other sites can't be picked, but the iframe as a whole can.
 - Sticky elements inside the element you're capturing (a table header, say) repeat in each screenful of a tall capture.
 - The tab has to stay visible while a capture runs.
+- The preview comes from a screenshot taken when the page last stopped scrolling. Animations, hover effects and content that changed since then show up in the saved image but not in the preview. The overlay blinks briefly whenever that screenshot is retaken.
 - Chrome blocks extensions on `chrome://` pages and the Web Store. The icon shows a red **NO** badge there.
 
 ## Development

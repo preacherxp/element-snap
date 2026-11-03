@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Element Snap",
+  "version": "1.0.0",
+  "description": "Pick any element on a page, or match a CSS selector, and save it as a pixel-exact image.",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "scripting", "downloads", "storage", "offscreen"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Element Snap: click to pick an element",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+S" }
+    }
+  }
+}

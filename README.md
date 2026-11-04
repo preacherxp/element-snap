@@ -1,5 +1,7 @@
 # Element Snap
 
+<p align="center"><a href="https://buymeacoffee.com/michal.hachula"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="41"></a></p>
+
 A Chrome extension that saves any element on a web page as a pixel-exact image.
 
 Click the toolbar icon and the picker starts right away. Hover to highlight an element and see a live preview of the image you'll get, then click to save it. Queue several and save them in one go, or type a CSS selector to grab every match. Elements taller than the screen are scrolled through and stitched into one image.

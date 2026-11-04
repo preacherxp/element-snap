@@ -8,7 +8,7 @@ A Chrome extension that saves any element on a web page as a pixel-exact image.
 
 Click the toolbar icon and the picker starts right away. Hover to highlight an element and see a live preview of the image you'll get, then click to save it. Queue several and save them in one go, or type a CSS selector to grab every match. Elements taller than the screen are scrolled through and stitched into one image.
 
-<p align="center"><img src="docs/screenshot.png" width="800" alt="Element Snap's picker on a pricing page: the Pro card is highlighted with its tag and size, a preview card in the corner shows the cropped Pro card and its output size of 696×785 PNG, the Starter and Team cards are queued as 01 and 02, and the teal bar at the bottom holds the selector field and output settings"></p>
+<p align="center"><img src="docs/hero.png" width="800" alt="Element Snap's picker on a pricing page: the Pro card is highlighted with its tag and size, a preview card in the corner shows the cropped Pro card and its output size of 696×785 PNG, the Starter and Team cards are queued as 01 and 02, and the teal bar at the bottom holds the selector field and output settings"></p>
 
 <p align="center"><img src="docs/output.png" width="348" alt="The saved image: just the Pro pricing card with 24px of padding, at retina resolution"><br><sub>What lands in your Downloads folder: just the element, at retina resolution.</sub></p>
 
@@ -54,6 +54,15 @@ Images are saved to `Downloads/element-snap/` as `host_tag-id_timestamp.png`, wi
 
 If the shortcut doesn't respond, set it at `chrome://extensions/shortcuts`.
 
+## Limits
+
+- An element inside its own scrolling box that's bigger than the screen: only the visible part is captured.
+- Content inside iframes from other sites can't be picked, but the iframe as a whole can.
+- Sticky elements inside the element you're capturing (a table header, say) repeat in each screenful of a tall capture.
+- The tab has to stay visible while a capture runs.
+- The preview comes from a screenshot taken when the page last stopped scrolling. Animations, hover effects and content that changed since then show up in the saved image but not in the preview. The overlay blinks briefly whenever that screenshot is retaken.
+- Chrome blocks extensions on `chrome://` pages and the Web Store. The icon shows a red **NO** badge there.
+
 ## Architecture
 
 ```mermaid
@@ -98,15 +107,6 @@ flowchart LR
 | `offscreen` | Stitch images and create blob URLs for the download |
 
 The extension has no host permissions and never runs on a page you haven't clicked it on. Nothing leaves your machine.
-
-### Limits
-
-- An element inside its own scrolling box that's bigger than the screen: only the visible part is captured.
-- Content inside iframes from other sites can't be picked, but the iframe as a whole can.
-- Sticky elements inside the element you're capturing (a table header, say) repeat in each screenful of a tall capture.
-- The tab has to stay visible while a capture runs.
-- The preview comes from a screenshot taken when the page last stopped scrolling. Animations, hover effects and content that changed since then show up in the saved image but not in the preview. The overlay blinks briefly whenever that screenshot is retaken.
-- Chrome blocks extensions on `chrome://` pages and the Web Store. The icon shows a red **NO** badge there.
 
 ## Development
 

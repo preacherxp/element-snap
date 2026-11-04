@@ -36,7 +36,9 @@ Click the toolbar icon, or press `⌥⇧S` (`Alt+Shift+S` on Windows and Linux).
 | Enter | Save the queue (or the highlighted element if the queue is empty) |
 | Esc | Close the picker |
 
-While you hover, a **preview** card next to the bar shows the element cropped as it will be saved, with your padding, plus the output size in pixels. It notes when an element is bigger than the screen (it gets stitched) or partly off screen (it gets scrolled into view). The preview steps aside if it would cover the element you're pointing at.
+While you hover, a **preview** card next to the bar shows the element cropped as it will be saved, with your padding, plus the output size in pixels. It updates as soon as you change the format, scale or padding. It notes when an element is bigger than the screen (it gets stitched) or partly off screen (it gets scrolled into view). The preview steps aside if it would cover the element you're pointing at.
+
+<p align="center"><img src="docs/preview.png" width="640" alt="The picker on a dark repository page: a commit message is highlighted as span#msg.msg 294×21, and the preview card above the bar shows that message cropped edge to edge with its output size, 588×42 PNG"></p>
 
 The bar at the bottom of the page holds the rest:
 
